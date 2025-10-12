@@ -1,2 +1,2 @@
-# GS-Commons-Configuration-Updater
+# Digital-Commons-Configuration-Updater
 
