@@ -34,19 +34,15 @@ def log(output_box, text):
 
 # -------------------- Time + Progress Tracking --------------------
 def update_status():
-    """Update elapsed/remaining time and progress bar."""
     if start_time is None or total_records == 0:
         return
-
     while not stop_flag.is_set():
         if pause_flag.is_set():
             elapsed = time.time() - start_time
             avg_per_record = elapsed / processed_count if processed_count > 0 else 0
             remaining = (total_records - processed_count) * avg_per_record if avg_per_record > 0 else 0
-
             elapsed_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
             remaining_str = time.strftime("%H:%M:%S", time.gmtime(remaining)) if remaining > 0 else "--:--:--"
-
             percent_complete = (processed_count / total_records) * 100 if total_records > 0 else 0
             timer_label.config(
                 text=f"⏱️ Elapsed: {elapsed_str}   ⏳ Est. Remaining: {remaining_str}   ({processed_count}/{total_records})"
@@ -58,14 +54,13 @@ def update_status():
 
 # -------------------- Core Form Updater Logic --------------------
 def update_forms(file_path, output_box):
-    """Main automation loop for updating configuration pages."""
+    """Update Digital Commons configuration pages based on spreadsheet."""
     global processed_count, total_records, start_time
-
     results = []
     start_time = time.time()
 
     try:
-        # Connect to Chrome
+        # Connect to Chrome in debug mode
         options = Options()
         options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
@@ -79,7 +74,7 @@ def update_forms(file_path, output_box):
         total_records = len(df)
         log(output_box, f"✅ Connected to Chrome. Processing {total_records} records...\n")
 
-        # Start timer and progress tracker
+        # Start timer thread
         threading.Thread(target=update_status, daemon=True).start()
 
         for idx, row in df.iterrows():
@@ -92,7 +87,6 @@ def update_forms(file_path, output_box):
                 time.sleep(2)
                 if stop_flag.is_set():
                     break
-
             if stop_flag.is_set():
                 break
 
@@ -106,19 +100,19 @@ def update_forms(file_path, output_box):
                 driver.get(url)
                 WebDriverWait(driver, 25).until(EC.presence_of_element_located((By.TAG_NAME, "form")))
 
-                # Fill out form fields
+                # Synchronize only listed fields
                 for field in field_names:
                     value = str(row[field]) if pd.notna(row[field]) else ""
-                    if not value:
-                        continue
                     try:
                         element = driver.find_element(By.NAME, field)
                         tag = element.tag_name.lower()
+
                         if tag == "input":
                             input_type = element.get_attribute("type")
-                            if input_type in ["text", "email", "number", "url", "search"]:
+                            if input_type in ["text", "email", "number", "url", "search", "password"]:
                                 element.clear()
-                                element.send_keys(value)
+                                if value:
+                                    element.send_keys(value)
                             elif input_type in ["checkbox", "radio"]:
                                 checked = element.is_selected()
                                 should_check = bool(value)
@@ -126,15 +120,23 @@ def update_forms(file_path, output_box):
                                     element.click()
                             else:
                                 driver.execute_script("arguments[0].value = arguments[1];", element, value)
+
                         elif tag == "textarea":
                             element.clear()
-                            element.send_keys(value)
+                            if value:
+                                element.send_keys(value)
+
                         elif tag == "select":
-                            driver.execute_script(
-                                "for (let opt of arguments[0].options) { "
-                                "if (opt.text.trim() === arguments[1].trim()) { opt.selected = true; break; } }",
-                                element, value
-                            )
+                            # Select matching option or clear selection if blank
+                            if value:
+                                driver.execute_script(
+                                    "for (let opt of arguments[0].options) { "
+                                    "if (opt.text.trim() === arguments[1].trim()) { opt.selected = true; return; } }",
+                                    element, value
+                                )
+                            else:
+                                driver.execute_script("arguments[0].selectedIndex = -1;", element)
+
                     except Exception as e:
                         log(output_box, f"   ⚠️ Could not update field '{field}': {e}")
 
@@ -239,8 +241,8 @@ def show_instructions():
 🧩 Digital Commons Configuration Form Updater — Setup & Instructions
 ================================================================
 
-This tool automatically updates and resubmits Digital Commons
-configuration forms based on data provided in a spreadsheet.
+This tool updates Digital Commons configuration pages using data from
+a spreadsheet. Each row corresponds to one configuration page.
 
 ------------------------------------
 📦 1. Install Python
@@ -272,16 +274,9 @@ python3 -m pip install selenium webdriver-manager pandas openpyxl tk
 (Windows users may need to use "python" instead of "python3")
 
 ------------------------------------
-🌐 3. Install and Open Google Chrome
+🌐 3. Start Chrome in Debug Mode
 ------------------------------------
-Make sure you have Google Chrome installed:
-https://www.google.com/chrome/
-
-------------------------------------
-⚙️ 4. Start Chrome in Debug Mode
-------------------------------------
-Close all Chrome windows completely, then open a new Chrome session in
-debug mode using one of the following commands:
+Close all Chrome windows completely, then open a new Chrome session:
 
 🖥️ macOS:
 ------------------------------------
@@ -291,37 +286,37 @@ debug mode using one of the following commands:
 ------------------------------------
 "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\\chrome-debug"
 
-Chrome will open in a new window. Log in to your Digital Commons account.
+Log in to your Digital Commons account in that Chrome window.
 
 ------------------------------------
-📘 5. Prepare the Spreadsheet
+📘 4. Prepare the Spreadsheet
 ------------------------------------
-• Each spreadsheet must include a column named:  URL
-• Each row should contain the full configuration page URL to update.
-• Each additional column should match a form field name on the page.
+• Must include a column named: URL  
+• Each row should include the configuration page URL.  
+• Include only the columns for fields you want to update.  
+• If a cell is empty, the corresponding form field will be cleared.  
 
 ------------------------------------
-▶️ 6. Run the Script
+▶️ 5. Run the Script
 ------------------------------------
-1. Make sure Chrome is open in debug mode and logged in.
-2. Double-click this Python file, or run it manually:
+1. Make sure Chrome is open in debug mode and logged in.  
+2. Double-click this Python file or run:
    python3 ConfigurationFormUpdater.py
 3. In the window:
-   • Click “Show Setup & Instructions” to review these steps.
-   • Click “Run on Mac” or “Run on Windows” to begin.
-   • Select your Excel file when prompted.
+   • Click “Show Setup & Instructions” to review these steps.  
+   • Click “Run on Mac” or “Run on Windows.”  
+   • Select your Excel file when prompted.  
 
 ------------------------------------
-📊 7. Results
+📊 6. Results
 ------------------------------------
-After processing, a new file will be saved in the same folder with
-“_results.xlsx” appended to the filename. This file includes a summary
-of each URL’s update status.
+After processing, a new file will be created with “_results.xlsx” added
+to its name, containing a record of each update.
 
 ------------------------------------
 🎉 That’s It!
 ------------------------------------
-You can now use this tool anytime to batch-update and regenerate
+You can now use this tool anytime to batch update and regenerate
 Digital Commons configuration pages automatically.
 """
     messagebox.showinfo("Setup & Instructions", instructions)
