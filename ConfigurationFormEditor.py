@@ -2,7 +2,7 @@ import os
 import time
 import threading
 import tkinter as tk
-from tkinter import filedialog, scrolledtext, ttk
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -26,15 +26,15 @@ total_records = 0
 
 
 # -------------------- Logging --------------------
-def log(output_box, text, tag="info"):
-    output_box.insert(tk.END, text + "\n", tag)
+def log(output_box, text):
+    output_box.insert(tk.END, text + "\n")
     output_box.see(tk.END)
     output_box.update()
 
 
 # -------------------- Time + Progress Tracking --------------------
 def update_status():
-    """Updates elapsed time, estimated time, and progress bar."""
+    """Update elapsed/remaining time and progress bar."""
     if start_time is None or total_records == 0:
         return
 
@@ -54,13 +54,11 @@ def update_status():
             progress_bar["value"] = percent_complete
             percent_label.config(text=f"{percent_complete:.1f}%")
         time.sleep(1)
-        timer_label.update()
-        progress_bar.update()
-        percent_label.update()
 
 
-# -------------------- Core Form Editor Logic --------------------
+# -------------------- Core Form Updater Logic --------------------
 def update_forms(file_path, output_box):
+    """Main automation loop for updating configuration pages."""
     global processed_count, total_records, start_time
 
     results = []
@@ -74,23 +72,23 @@ def update_forms(file_path, output_box):
 
         df = pd.read_excel(file_path)
         if "URL" not in df.columns:
-            log(output_box, "❌ Spreadsheet must contain a 'URL' column.", "error")
+            log(output_box, "⚠️ Spreadsheet must contain a 'URL' column.")
             return
 
         field_names = [col for col in df.columns if col not in ["URL", "Page Title"]]
         total_records = len(df)
-        log(output_box, f"✅ Connected to Chrome. Processing {total_records} records...\n", "info")
+        log(output_box, f"✅ Connected to Chrome. Processing {total_records} records...\n")
 
-        # Start status tracker thread
+        # Start timer and progress tracker
         threading.Thread(target=update_status, daemon=True).start()
 
         for idx, row in df.iterrows():
             if stop_flag.is_set():
-                log(output_box, "⏹️ Stop signal received. Halting process...", "warn")
+                log(output_box, "⏹️ Stop signal received. Halting process...")
                 break
 
             while not pause_flag.is_set():
-                log(output_box, "⏸️ Paused. Waiting to resume...", "warn")
+                log(output_box, "⏸️ Paused. Waiting to resume...")
                 time.sleep(2)
                 if stop_flag.is_set():
                     break
@@ -99,7 +97,7 @@ def update_forms(file_path, output_box):
                 break
 
             url = row["URL"]
-            log(output_box, f"➡️ ({idx+1}/{total_records}) Opening: {url}", "info")
+            log(output_box, f"➡️ ({idx+1}/{total_records}) Opening: {url}")
             context = "(unknown)"
             status = "Failed"
             message = ""
@@ -108,7 +106,7 @@ def update_forms(file_path, output_box):
                 driver.get(url)
                 WebDriverWait(driver, 25).until(EC.presence_of_element_located((By.TAG_NAME, "form")))
 
-                # Fill out fields
+                # Fill out form fields
                 for field in field_names:
                     value = str(row[field]) if pd.notna(row[field]) else ""
                     if not value:
@@ -138,37 +136,37 @@ def update_forms(file_path, output_box):
                                 element, value
                             )
                     except Exception as e:
-                        log(output_box, f"   ⚠️ Could not update field '{field}': {e}", "warn")
+                        log(output_box, f"   ⚠️ Could not update field '{field}': {e}")
 
                 # Submit form
                 try:
                     driver.find_element(By.XPATH, "//input[@type='submit']").click()
-                    log(output_box, "   💾 Submitted form.", "info")
+                    log(output_box, "   💾 Submitted form.")
                 except Exception:
-                    log(output_box, "   ⚠️ Submit button not found.", "warn")
+                    log(output_box, "   ⚠️ Submit button not found.")
 
                 WebDriverWait(driver, 25).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
                 time.sleep(2)
 
-                # Regenerate
+                # Regenerate configuration
                 try:
                     context = url.split("context=")[1].split("&")[0]
                     regen_url = f"https://digitalcommons.georgiasouthern.edu/cgi/user_config.cgi?context={context}&x_regenerate=1"
                     driver.get(regen_url)
-                    log(output_box, f"   🔁 Regenerating context: {context}", "info")
+                    log(output_box, f"   🔁 Regenerating context: {context}")
                     WebDriverWait(driver, 25).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
                     time.sleep(2)
                 except Exception as e:
-                    log(output_box, f"   ⚠️ Regeneration failed: {e}", "warn")
+                    log(output_box, f"   ⚠️ Regeneration failed: {e}")
                     message += f"Regeneration issue: {e}. "
 
                 status = "Success"
                 message += "Updated and regenerated successfully."
-                log(output_box, f"✅ {context} updated successfully.", "success")
+                log(output_box, f"✅ {context} updated successfully.")
 
             except Exception as e:
                 message = f"Error: {e}"
-                log(output_box, f"❌ Error processing {url}: {e}", "error")
+                log(output_box, f"❌ Error processing {url}: {e}")
 
             results.append({
                 "URL": url,
@@ -184,36 +182,35 @@ def update_forms(file_path, output_box):
         result_df = pd.DataFrame(results)
         out_path = os.path.splitext(file_path)[0] + "_results.xlsx"
         result_df.to_excel(out_path, index=False)
-        log(output_box, f"\n📊 Results saved to: {out_path}", "info")
+        log(output_box, f"\n📊 Results saved to: {out_path}")
 
         driver.quit()
-        log(output_box, "\n🎉 Process finished or stopped.", "success")
+        log(output_box, "\n🎉 Process finished or stopped.")
 
     except Exception as e:
-        log(output_box, f"\n❌ Fatal error: {e}", "error")
+        log(output_box, f"\n❌ Fatal error: {e}")
 
 
 # -------------------- Control Buttons --------------------
 def toggle_pause():
     if pause_flag.is_set():
         pause_flag.clear()
-        pause_btn.config(text="▶️ Resume", bg="green")
-        log(output_box, "⏸️ Script paused. Will pause after the current URL completes.", "warn")
+        pause_btn.config(text="▶️ Resume", bg="lightgreen")
+        log(output_box, "⏸️ Script paused. Will pause after the current URL completes.")
     else:
         pause_flag.set()
-        pause_btn.config(text="⏸️ Pause", bg="goldenrod")
-        log(output_box, "▶️ Script resumed.", "info")
+        pause_btn.config(text="⏸️ Pause", bg="khaki")
+        log(output_box, "▶️ Script resumed.")
 
 
 def stop_script():
     stop_flag.set()
     pause_flag.set()
-    stop_btn.config(state="disabled", bg="gray")
-    log(output_box, "⏹️ Stop requested. Will finish current record then exit.", "warn")
+    stop_btn.config(state="disabled", bg="lightgray")
+    log(output_box, "⏹️ Stop requested. Will finish current record then exit.")
 
 
-# -------------------- Run Handler --------------------
-def run_editor(os_type):
+def run_updater(os_type):
     global start_time, processed_count, total_records
     file_path = filedialog.askopenfilename(
         title="Select Updated Spreadsheet",
@@ -229,73 +226,130 @@ def run_editor(os_type):
     progress_bar["value"] = 0
     percent_label.config(text="0.0%")
     timer_label.config(text="⏱️ Elapsed: 00:00:00   ⏳ Est. Remaining: --:--:--")
-    stop_btn.config(state="normal", bg="red")
-    pause_btn.config(text="⏸️ Pause", bg="goldenrod")
+    stop_btn.config(state="normal", bg="lightcoral")
+    pause_btn.config(text="⏸️ Pause", bg="khaki")
 
-    log(output_box, f"\nStarting Form Editor for {os_type}...", "info")
+    log(output_box, f"\nStarting Form Updater for {os_type}...")
     threading.Thread(target=update_forms, args=(file_path, output_box), daemon=True).start()
 
 
-# -------------------- Instructions --------------------
+# -------------------- Setup & Instructions --------------------
 def show_instructions():
     instructions = """
-🧩 Digital Commons Configuration Form Editor — with Time Tracker + Progress Bar
-===============================================================================
-Now includes:
-⏱️ Elapsed and remaining time tracker
-📊 Visual progress bar with % complete
-⏸️ Pause / ▶️ Resume / ⏹️ Stop controls
+🧩 Digital Commons Configuration Form Updater — Setup & Instructions
+================================================================
 
-Setup:
-1. Install Python dependencies:
-   python3 -m pip install selenium webdriver-manager pandas openpyxl
+This tool automatically updates and resubmits Digital Commons
+configuration forms based on data provided in a spreadsheet.
 
-2. Start Chrome in debug mode:
-   macOS:
-   /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222 --user-data-dir="~/chrome-debug"
+------------------------------------
+📦 1. Install Python
+------------------------------------
+🖥️ On macOS:
+------------------------------------
+1. Open Terminal and install Homebrew (if missing):
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+2. Install Python 3:
+   brew install python
 
-   Windows:
-   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\\chrome-debug"
+🪟 On Windows:
+------------------------------------
+1. Download Python from:
+   https://www.python.org/downloads/windows/
+2. During setup, check:
+   ✅ "Add Python to PATH"
+3. Click "Install Now"
 
-3. Log into Digital Commons in that Chrome window before starting.
+------------------------------------
+📚 2. Install Dependencies
+------------------------------------
+After installing Python, open Terminal (Mac) or Command Prompt (Windows)
+and run the following commands:
+
+python3 -m pip install --upgrade pip
+python3 -m pip install selenium webdriver-manager pandas openpyxl tk
+
+(Windows users may need to use "python" instead of "python3")
+
+------------------------------------
+🌐 3. Install and Open Google Chrome
+------------------------------------
+Make sure you have Google Chrome installed:
+https://www.google.com/chrome/
+
+------------------------------------
+⚙️ 4. Start Chrome in Debug Mode
+------------------------------------
+Close all Chrome windows completely, then open a new Chrome session in
+debug mode using one of the following commands:
+
+🖥️ macOS:
+------------------------------------
+/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222 --user-data-dir="~/chrome-debug"
+
+🪟 Windows:
+------------------------------------
+"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\\chrome-debug"
+
+Chrome will open in a new window. Log in to your Digital Commons account.
+
+------------------------------------
+📘 5. Prepare the Spreadsheet
+------------------------------------
+• Each spreadsheet must include a column named:  URL
+• Each row should contain the full configuration page URL to update.
+• Each additional column should match a form field name on the page.
+
+------------------------------------
+▶️ 6. Run the Script
+------------------------------------
+1. Make sure Chrome is open in debug mode and logged in.
+2. Double-click this Python file, or run it manually:
+   python3 ConfigurationFormUpdater.py
+3. In the window:
+   • Click “Show Setup & Instructions” to review these steps.
+   • Click “Run on Mac” or “Run on Windows” to begin.
+   • Select your Excel file when prompted.
+
+------------------------------------
+📊 7. Results
+------------------------------------
+After processing, a new file will be saved in the same folder with
+“_results.xlsx” appended to the filename. This file includes a summary
+of each URL’s update status.
+
+------------------------------------
+🎉 That’s It!
+------------------------------------
+You can now use this tool anytime to batch-update and regenerate
+Digital Commons configuration pages automatically.
 """
-    win = tk.Toplevel(root)
-    win.title("Setup & Instructions")
-    win.geometry("900x700")
-    text_area = scrolledtext.ScrolledText(win, wrap=tk.WORD, width=100, height=38)
-    text_area.pack(expand=True, fill="both", padx=10, pady=10)
-    text_area.insert(tk.END, instructions)
-    text_area.config(state=tk.DISABLED)
+    messagebox.showinfo("Setup & Instructions", instructions)
 
 
-# -------------------- UI Setup --------------------
+# -------------------- Main Window --------------------
 root = tk.Tk()
-root.title("Digital Commons Configuration Form Editor — Progress Bar Edition")
-root.geometry("850x740")
+root.title("Digital Commons Configuration Form Updater")
+root.geometry("830x740")
 
-title_label = tk.Label(
-    root,
-    text="Digital Commons Configuration Form Editor",
-    font=("Helvetica", 16, "bold")
-)
-title_label.pack(pady=5)
+title_label = tk.Label(root, text="Digital Commons Configuration Form Updater", font=("Helvetica", 16, "bold"))
+title_label.pack(pady=10)
 
-timer_label = tk.Label(root, text="⏱️ Elapsed: 00:00:00   ⏳ Est. Remaining: --:--:--", fg="lightblue", bg="#1e1e1e", font=("Helvetica", 12))
+timer_label = tk.Label(root, text="⏱️ Elapsed: 00:00:00   ⏳ Est. Remaining: --:--:--", font=("Helvetica", 11))
 timer_label.pack(pady=5)
 
-# Progress bar
-progress_frame = tk.Frame(root, bg="#1e1e1e")
+progress_frame = tk.Frame(root)
 progress_frame.pack(pady=5)
 
 progress_bar = ttk.Progressbar(progress_frame, orient="horizontal", length=700, mode="determinate")
 progress_bar.pack(side="left", padx=10)
-percent_label = tk.Label(progress_frame, text="0.0%", fg="white", bg="#1e1e1e")
+percent_label = tk.Label(progress_frame, text="0.0%")
 percent_label.pack(side="left")
 
 desc_label = tk.Label(
     root,
-    text="Automates configuration updates with time tracking, progress visualization, and full control.",
-    wraplength=800,
+    text="Updates Digital Commons configuration forms automatically using data from an Excel spreadsheet.",
+    wraplength=780,
     justify="center"
 )
 desc_label.pack(pady=5)
@@ -303,16 +357,16 @@ desc_label.pack(pady=5)
 btn_frame = tk.Frame(root)
 btn_frame.pack(pady=10)
 
-mac_btn = tk.Button(btn_frame, text="Run on Mac", width=18, command=lambda: run_editor("Mac"))
+mac_btn = tk.Button(btn_frame, text="Run on Mac", width=18, command=lambda: run_updater("Mac"))
 mac_btn.grid(row=0, column=0, padx=8)
 
-win_btn = tk.Button(btn_frame, text="Run on Windows", width=18, command=lambda: run_editor("Windows"))
+win_btn = tk.Button(btn_frame, text="Run on Windows", width=18, command=lambda: run_updater("Windows"))
 win_btn.grid(row=0, column=1, padx=8)
 
-pause_btn = tk.Button(btn_frame, text="⏸️ Pause", width=15, bg="goldenrod", command=toggle_pause)
+pause_btn = tk.Button(btn_frame, text="⏸️ Pause", width=15, bg="khaki", command=toggle_pause)
 pause_btn.grid(row=0, column=2, padx=8)
 
-stop_btn = tk.Button(btn_frame, text="⏹️ Stop", width=15, bg="red", fg="white", command=stop_script)
+stop_btn = tk.Button(btn_frame, text="⏹️ Stop", width=15, bg="lightcoral", command=stop_script)
 stop_btn.grid(row=0, column=3, padx=8)
 
 help_btn = tk.Button(root, text="Show Setup & Instructions", command=show_instructions, width=30)
@@ -320,14 +374,5 @@ help_btn.pack(pady=5)
 
 output_box = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=100, height=25)
 output_box.pack(padx=10, pady=10)
-
-# Colors and theme
-output_box.tag_config("info", foreground="white")
-output_box.tag_config("success", foreground="limegreen")
-output_box.tag_config("warn", foreground="gold")
-output_box.tag_config("error", foreground="red")
-
-root.configure(bg="#1e1e1e")
-output_box.configure(bg="#2b2b2b", fg="white", insertbackground="white")
 
 root.mainloop()
