@@ -235,8 +235,9 @@ def run_updater(os_type):
     threading.Thread(target=update_forms, args=(file_path, output_box), daemon=True).start()
 
 
-# -------------------- Setup & Instructions --------------------
+# -------------------- Setup & Instructions (Scrollable, Copyable, Non-blocking) --------------------
 def show_instructions():
+    """Display setup and usage instructions in a scrollable, copyable, independent window."""
     instructions = """
 🧩 Digital Commons Configuration Form Updater — Setup & Instructions
 ================================================================
@@ -319,7 +320,29 @@ to its name, containing a record of each update.
 You can now use this tool anytime to batch update and regenerate
 Digital Commons configuration pages automatically.
 """
-    messagebox.showinfo("Setup & Instructions", instructions)
+
+    win = tk.Toplevel(root)
+    win.title("Setup & Instructions")
+    win.geometry("820x720")
+    win.resizable(True, True)
+
+    text_area = scrolledtext.ScrolledText(
+        win,
+        wrap=tk.WORD,
+        width=95,
+        height=40,
+        font=("Helvetica", 11),
+        bg="white",
+        fg="black"
+    )
+    text_area.insert(tk.END, instructions)
+    text_area.config(state="normal")  # Allow copying
+    text_area.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+
+    close_btn = tk.Button(win, text="Close Instructions", command=win.destroy, width=20)
+    close_btn.pack(pady=10)
+
+    win.focus_force()  # Focus window but allow main window to remain interactive
 
 
 # -------------------- Main Window --------------------
