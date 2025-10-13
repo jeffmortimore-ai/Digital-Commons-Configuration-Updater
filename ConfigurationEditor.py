@@ -241,17 +241,20 @@ def show_instructions():
     instructions = """
 🧩 Digital Commons Configuration Form Updater — Setup & Instructions
 ================================================================
-
-This tool updates Digital Commons configuration pages using data from
-a spreadsheet. Each row corresponds to one configuration page.
+This tool updates form field values from Digital Commons 
+configuration pages. It connects to a Chrome browser that 
+you open manually in debug mode.
 
 ------------------------------------
-📦 1. Install Python
+📦 1. Install Requirements
 ------------------------------------
+Install Python (if not already installed):
+
 🖥️ On macOS:
 ------------------------------------
 1. Open Terminal and install Homebrew (if missing):
    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
 2. Install Python 3:
    brew install python
 
@@ -259,66 +262,95 @@ a spreadsheet. Each row corresponds to one configuration page.
 ------------------------------------
 1. Download Python from:
    https://www.python.org/downloads/windows/
+
 2. During setup, check:
    ✅ "Add Python to PATH"
+
 3. Click "Install Now"
 
 ------------------------------------
 📚 2. Install Dependencies
 ------------------------------------
-After installing Python, open Terminal (Mac) or Command Prompt (Windows)
-and run the following commands:
+1. Once Python is installed, open Terminal (Mac) or Command Prompt (Windows)
+   and run the following commands exactly as shown:
 
-python3 -m pip install --upgrade pip
-python3 -m pip install selenium webdriver-manager pandas openpyxl tk
+   python3 -m pip install --upgrade pip
+   python3 -m pip install selenium webdriver-manager pandas openpyxl tk
 
-(Windows users may need to use "python" instead of "python3")
+   Windows users may need to use "python" instead of "python3".
 
 ------------------------------------
-🌐 3. Start Chrome in Debug Mode
+🌐 3. Install Google Chrome
 ------------------------------------
-Close all Chrome windows completely, then open a new Chrome session:
+1. Download and install Chrome if you don’t already have it:
+   https://www.google.com/chrome/
+
+------------------------------------
+⚙️ 4. Start Chrome in Debug Mode
+------------------------------------
+1. Close all Chrome windows completely.
+
+2. Run ONE of the following commands exactly as shown:
 
 🖥️ macOS:
 ------------------------------------
+Using Terminal:
 /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222 --user-data-dir="~/chrome-debug"
 
 🪟 Windows:
 ------------------------------------
+Using Command Prompt:
 "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\\chrome-debug"
 
-Log in to your Digital Commons account in that Chrome window.
+OR 
+
+Using PowerShell:
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\chrome-debug"
+
+Chrome will open in a new window.
 
 ------------------------------------
-📘 4. Prepare the Spreadsheet
+⚙️ 5. Log into Digital Commons
 ------------------------------------
-• Must include a column named: URL  
-• Each row should include the configuration page URL.  
+
+1. Once Chrome is open in debug mode, navigate to Georgia Southern Commons:
+   https://digitalcommons.georgiasouthern.edu/
+
+2. Log into your Digital Commons administrator account.
+
+------------------------------------
+📘 6. Prepare the Spreadsheet
+------------------------------------
+• Each spreadsheet should include in cell A1:  URL
+• Cell A2 and following should contain a complete Digital Commons URL, e.g.:
+  https://digitalcommons.georgiasouthern.edu/cgi/user_config.cgi?context=allenepaulson
 • Include only the columns for fields you want to update.  
 • If a cell is empty, the corresponding form field will be cleared.  
 
 ------------------------------------
-▶️ 5. Run the Script
+▶️ 7. Run the Script
 ------------------------------------
-1. Make sure Chrome is open in debug mode and logged in.  
-2. Double-click this Python file or run:
-   python3 ConfigurationFormUpdater.py
-3. In the window:
-   • Click “Show Setup & Instructions” to review these steps.  
-   • Click “Run on Mac” or “Run on Windows.”  
-   • Select your Excel file when prompted.  
+Once Chrome is open in debug mode and logged in:
+   - Double-click this Python file, or run:
+     python3 ConfigurationScraper_UI_Standalone.py
+        (or "python" on Windows)
+2. In the window:
+   - Click “Show Instructions” if you need to review these steps.
+   - Click “Run on Mac” or “Run on Windows.”
+   - Select one or more Excel files.
+3. The script will visit each URL and update all form fields included in the Excel file.
 
 ------------------------------------
-📊 6. Results
+📊 8. Results
 ------------------------------------
-After processing, a new file will be created with “_results.xlsx” added
-to its name, containing a record of each update.
+After processing, a new file will be created with “_results.xlsx” 
+added to its name, containing a record of each update.
 
 ------------------------------------
 🎉 That’s It!
 ------------------------------------
-You can now use this tool anytime to batch update and regenerate
-Digital Commons configuration pages automatically.
+You can now use this tool anytime to batch update and 
+regenerate Digital Commons configuration pages.
 """
 
     win = tk.Toplevel(root)
